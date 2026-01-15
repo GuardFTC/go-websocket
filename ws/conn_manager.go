@@ -2,6 +2,8 @@
 package ws
 
 import (
+	"sync"
+
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
 )
@@ -18,6 +20,7 @@ func InitConnManager() {
 // connManager 链接管理器
 type connManager struct {
 	connections map[string]*websocket.Conn
+	mu          sync.RWMutex
 }
 
 // newConnManager 创建链接管理器
@@ -27,60 +30,98 @@ func newConnManager() *connManager {
 	}
 }
 
-// Add 添加链接
-func (cm *connManager) Add(userId string, conn *websocket.Conn) {
-	cm.connections[userId] = conn
-	logrus.Infof("[websocket-链接管理器] 添加链接成功: [%v]", userId)
-}
-
 // Get 获取链接
 func (cm *connManager) Get(userId string) (*websocket.Conn, bool) {
+
+	//1.加读锁
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	//2.获取链接，返回
 	conn, isExist := cm.connections[userId]
 	return conn, isExist
 }
 
-// Remove 删除链接
-func (cm *connManager) Remove(userId string) {
-	delete(cm.connections, userId)
-	logrus.Infof("[websocket-链接管理器] 删除链接成功: [%v]", userId)
-}
+// Add 添加链接
+func (cm *connManager) Add(userId string, conn *websocket.Conn) {
 
-// CloseAll 关闭所有链接
-func (cm *connManager) CloseAll() {
+	//1.加锁
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
 
-	//1.循环所有链接
-	for userId, conn := range cm.connections {
+	//2.如果链接已存在，关闭旧链接
+	if oldConn, isExist := cm.connections[userId]; isExist {
 
-		//2.关闭链接
-		if err := conn.Close(); err != nil {
-			logrus.Errorf("[websocket-链接管理器] 链接关闭异常: [%v]", err)
+		//3.日志打印
+		logrus.Warnf("[websocket-链接管理器] 链接已存在: [%v]", userId)
+
+		//4.关闭旧链接
+		if err := oldConn.Close(); err != nil {
+			logrus.Errorf("[websocket-链接管理器] 旧链接关闭异常: userId=[%s] err=[%v]", userId, err)
 		}
-
-		//3.移除链接
-		cm.Remove(userId)
 	}
 
-	//4.打印日志
-	logrus.Infof("[websocket-链接管理器] 关闭所有链接成功")
+	//5.向map中添加新链接
+	cm.connections[userId] = conn
+	logrus.Infof("[websocket-链接管理器] 添加链接成功: [%v]", userId)
+}
+
+// Remove 删除链接
+func (cm *connManager) Remove(userId string) {
+
+	//1.加锁
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	//2.从map中删除链接
+	delete(cm.connections, userId)
+	logrus.Infof("[websocket-链接管理器] 删除链接成功: [%v]", userId)
 }
 
 // Close 关闭链接
 func (cm *connManager) Close(userId string) {
 
-	//1.获取链接
-	conn, isExist := cm.Get(userId)
+	//1.加锁
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	//2.获取链接
+	conn, isExist := cm.connections[userId]
 	if !isExist {
 		return
 	}
 
-	//2.关闭链接
+	//3.关闭链接
 	if err := conn.Close(); err != nil {
-		logrus.Errorf("[websocket-链接管理器] 关闭链接异常: [%v]", err)
+		logrus.Errorf("[websocket-链接管理器] 链接关闭异常: userId=[%s] err=[%v]", userId, err)
 	}
 
-	//3.移除链接
-	cm.Remove(userId)
+	//4.移除链接
+	delete(cm.connections, userId)
 
-	//4.打印日志
+	//5.打印日志
 	logrus.Infof("[websocket-链接管理器] 关闭链接成功: [%v]", userId)
+}
+
+// CloseAll 关闭所有链接
+func (cm *connManager) CloseAll() {
+
+	//1.加锁
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	//2.循环所有链接
+	for userId, conn := range cm.connections {
+
+		//3.关闭链接
+		if err := conn.Close(); err != nil {
+			logrus.Errorf("[websocket-链接管理器] 链接关闭异常: userId=[%s] err=[%v]", userId, err)
+		}
+	}
+
+	//4.重置map
+	cm.connections = make(map[string]*websocket.Conn)
+
+	//5.打印日志
+	logrus.Infof("[websocket-链接管理器] 关闭所有链接成功")
 }
