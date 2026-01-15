@@ -88,7 +88,7 @@ func (cm *connManager) Remove(userId string) {
 }
 
 // Close 关闭链接
-func (cm *connManager) Close(userId string) {
+func (cm *connManager) Close(userId string, exceptConn *websocket.Conn) {
 
 	//1.加锁
 	cm.mu.Lock()
@@ -96,17 +96,19 @@ func (cm *connManager) Close(userId string) {
 	//2.获取链接
 	conn, isExist := cm.connections[userId]
 
-	//3.移除链接
-	delete(cm.connections, userId)
+	//3.如果存在并且是同一个链接，移除链接
+	if isExist && conn == exceptConn {
+		delete(cm.connections, userId)
+	}
 
 	//4.释放锁
 	cm.mu.Unlock()
 
-	//5.如果链接确实存在
-	if isExist {
+	//5.如果存在并且是同一个链接
+	if isExist && conn == exceptConn {
 
 		//6.关闭链接
-		if err := conn.Close(); err != nil {
+		if err := exceptConn.Close(); err != nil {
 			logrus.Errorf("[websocket-链接管理器] 链接关闭异常: userId=[%s] err=[%v]", userId, err)
 		}
 

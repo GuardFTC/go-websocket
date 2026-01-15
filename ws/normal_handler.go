@@ -31,7 +31,7 @@ func NormalHandler(c *gin.Context) {
 
 	//3.将链接加入关闭器，并确保最终关闭链接
 	ConnManager.Add(userID, conn)
-	defer ConnManager.Close(userID)
+	defer ConnManager.Close(userID, conn)
 
 	//4.定义消息处理逻辑，循环读取消息
 	for {
