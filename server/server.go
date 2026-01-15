@@ -15,7 +15,7 @@ import (
 )
 
 // StartServer 启动服务
-func StartServer() {
+func StartServer(onShutdown func()) {
 
 	//1.初始化路由
 	router := initRouter()
@@ -35,11 +35,11 @@ func StartServer() {
 	}()
 
 	//4.优雅关闭服务器
-	waitForShutdown(server)
+	waitForShutdown(server, onShutdown)
 }
 
 // waitForShutdown 优雅关闭服务器
-func waitForShutdown(server *http.Server) {
+func waitForShutdown(server *http.Server, onShutdown func()) {
 
 	//1.创建信号通道
 	quit := make(chan os.Signal, 1)
@@ -51,11 +51,16 @@ func waitForShutdown(server *http.Server) {
 	<-quit
 	logrus.Infof("[Server] 接收到关闭信号，开始优雅关闭...")
 
-	//4.设置关闭超时时间
+	//4.执行关闭前的清理工作（如关闭所有 WebSocket 连接）
+	if onShutdown != nil {
+		onShutdown()
+	}
+
+	//5.设置关闭超时时间
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	//5.关闭HTTP服务器，等待现有连接完成
+	//6.关闭HTTP服务器，等待现有连接完成
 	if err := server.Shutdown(ctx); err != nil {
 		logrus.Errorf("[Server] 服务器关闭异常: [%v]", err)
 	} else {

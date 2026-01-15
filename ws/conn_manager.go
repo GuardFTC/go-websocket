@@ -47,22 +47,29 @@ func (cm *connManager) Add(userId string, conn *websocket.Conn) {
 
 	//1.加锁
 	cm.mu.Lock()
-	defer cm.mu.Unlock()
 
-	//2.如果链接已存在，关闭旧链接
-	if oldConn, isExist := cm.connections[userId]; isExist {
+	//2.获取旧链接
+	oldConn, isExist := cm.connections[userId]
 
-		//3.日志打印
+	//3.向map中添加新链接
+	cm.connections[userId] = conn
+
+	//4.释放锁
+	cm.mu.Unlock()
+
+	//5.如果链接已存在，关闭旧链接
+	if isExist {
+
+		//6.日志打印
 		logrus.Warnf("[websocket-链接管理器] 链接已存在: [%v]", userId)
 
-		//4.关闭旧链接
+		//7.关闭旧链接
 		if err := oldConn.Close(); err != nil {
 			logrus.Errorf("[websocket-链接管理器] 旧链接关闭异常: userId=[%s] err=[%v]", userId, err)
 		}
 	}
 
-	//5.向map中添加新链接
-	cm.connections[userId] = conn
+	//8.打印最终日志
 	logrus.Infof("[websocket-链接管理器] 添加链接成功: [%v]", userId)
 }
 
@@ -83,23 +90,24 @@ func (cm *connManager) Close(userId string) {
 
 	//1.加锁
 	cm.mu.Lock()
-	defer cm.mu.Unlock()
 
 	//2.获取链接
 	conn, isExist := cm.connections[userId]
-	if !isExist {
-		return
-	}
 
-	//3.关闭链接
-	if err := conn.Close(); err != nil {
-		logrus.Errorf("[websocket-链接管理器] 链接关闭异常: userId=[%s] err=[%v]", userId, err)
-	}
-
-	//4.移除链接
+	//3.移除链接
 	delete(cm.connections, userId)
 
-	//5.打印日志
+	//4.释放锁
+	cm.mu.Unlock()
+
+	//5.如果链接确实存在，关闭链接
+	if isExist {
+		if err := conn.Close(); err != nil {
+			logrus.Errorf("[websocket-链接管理器] 链接关闭异常: userId=[%s] err=[%v]", userId, err)
+		}
+	}
+
+	//6.打印日志
 	logrus.Infof("[websocket-链接管理器] 关闭链接成功: [%v]", userId)
 }
 
@@ -108,20 +116,25 @@ func (cm *connManager) CloseAll() {
 
 	//1.加锁
 	cm.mu.Lock()
-	defer cm.mu.Unlock()
 
-	//2.循环所有链接
-	for userId, conn := range cm.connections {
+	//2.复制map
+	copyConnections := cm.connections
 
-		//3.关闭链接
+	//3.重置map
+	cm.connections = make(map[string]*websocket.Conn)
+
+	//4.释放锁
+	cm.mu.Unlock()
+
+	//5.循环所有链接
+	for userId, conn := range copyConnections {
+
+		//6.关闭链接
 		if err := conn.Close(); err != nil {
 			logrus.Errorf("[websocket-链接管理器] 链接关闭异常: userId=[%s] err=[%v]", userId, err)
 		}
 	}
 
-	//4.重置map
-	cm.connections = make(map[string]*websocket.Conn)
-
-	//5.打印日志
+	//7.打印日志
 	logrus.Infof("[websocket-链接管理器] 关闭所有链接成功")
 }
