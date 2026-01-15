@@ -61,11 +61,13 @@ func (cm *connManager) Add(userId string, conn *websocket.Conn) {
 	if isExist {
 
 		//6.日志打印
-		logrus.Warnf("[websocket-链接管理器] 链接已存在: [%v]", userId)
+		logrus.Warnf("[websocket-链接管理器] 存在旧链接: [%v]", userId)
 
 		//7.关闭旧链接
 		if err := oldConn.Close(); err != nil {
 			logrus.Errorf("[websocket-链接管理器] 旧链接关闭异常: userId=[%s] err=[%v]", userId, err)
+		} else {
+			logrus.Infof("[websocket-链接管理器] 旧链接关闭成功: [%v]", userId)
 		}
 	}
 
@@ -100,15 +102,17 @@ func (cm *connManager) Close(userId string) {
 	//4.释放锁
 	cm.mu.Unlock()
 
-	//5.如果链接确实存在，关闭链接
+	//5.如果链接确实存在
 	if isExist {
+
+		//6.关闭链接
 		if err := conn.Close(); err != nil {
 			logrus.Errorf("[websocket-链接管理器] 链接关闭异常: userId=[%s] err=[%v]", userId, err)
 		}
-	}
 
-	//6.打印日志
-	logrus.Infof("[websocket-链接管理器] 关闭链接成功: [%v]", userId)
+		//7.打印日志
+		logrus.Infof("[websocket-链接管理器] 关闭链接成功: [%v]", userId)
+	}
 }
 
 // CloseAll 关闭所有链接

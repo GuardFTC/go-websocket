@@ -2,7 +2,6 @@
 package ws
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -39,15 +38,20 @@ func NormalHandler(c *gin.Context) {
 
 		//5.读取消息
 		messageType, p, err := conn.ReadMessage()
-		if err != nil && !errors.Is(err, websocket.ErrCloseSent) {
-			logrus.Errorf("[websocket-normal处理器] 读取消息失败: %v", err)
+
+		//6.判断是否为正常关闭或服务端主动关闭
+		if err != nil {
+			if !(websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) ||
+				websocket.IsUnexpectedCloseError(err) == false) {
+				logrus.Errorf("[websocket-normal处理器] 读取消息失败: userID=[%s] err=[%v]", userID, err)
+			}
 			break
 		}
 
-		//6.打印消息 模拟消息处理逻辑
+		//7.打印消息 模拟消息处理逻辑
 		fmt.Printf("收到消息: %s\n", p)
 
-		//7.推送消息给客户端，模拟服务端推送消息
+		//8.推送消息给客户端，模拟服务端推送消息
 		err = conn.WriteMessage(messageType, []byte("服务器已收到: "+string(p)))
 		if err != nil {
 			logrus.Errorf("[websocket-normal处理器] 推送消息给客户端失败: %v", err)
