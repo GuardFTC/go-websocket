@@ -67,12 +67,12 @@ func (cm *connManager) Add(userId string, conn *websocket.Conn) {
 		if err := oldConn.Close(); err != nil {
 			logrus.Errorf("[websocket-链接管理器] 旧链接关闭异常: userId=[%s] err=[%v]", userId, err)
 		} else {
-			logrus.Infof("[websocket-链接管理器] 旧链接关闭成功: [%v]", userId)
+			logrus.Debugf("[websocket-链接管理器] 旧链接关闭成功: [%v]", userId)
 		}
 	}
 
 	//8.打印最终日志
-	logrus.Infof("[websocket-链接管理器] 添加链接成功: [%v]", userId)
+	logrus.Debugf("[websocket-链接管理器] 添加链接成功: [%v]", userId)
 }
 
 // Remove 删除链接
@@ -84,7 +84,7 @@ func (cm *connManager) Remove(userId string) {
 
 	//2.从map中删除链接
 	delete(cm.connections, userId)
-	logrus.Infof("[websocket-链接管理器] 删除链接成功: [%v]", userId)
+	logrus.Debugf("[websocket-链接管理器] 删除链接成功: [%v]", userId)
 }
 
 // Close 关闭链接
@@ -113,7 +113,7 @@ func (cm *connManager) Close(userId string, exceptConn *websocket.Conn) {
 		}
 
 		//7.打印日志
-		logrus.Infof("[websocket-链接管理器] 关闭链接成功: [%v]", userId)
+		logrus.Debugf("[websocket-链接管理器] 关闭链接成功: [%v]", userId)
 	}
 }
 

@@ -2,8 +2,10 @@
 package ws
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -29,17 +31,29 @@ func NormalHandler(c *gin.Context) {
 		return
 	}
 
-	//3.将链接加入关闭器，并确保最终关闭链接
+	//3.将链接加管理器，并确保最终关闭链接
 	ConnManager.Add(userID, conn)
 	defer ConnManager.Close(userID, conn)
 
-	//4.定义消息处理逻辑，循环读取消息
+	//4.启动心跳协程
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go heartbeat(ctx, conn, userID)
+
+	//5.定义消息处理逻辑，循环读取消息
 	for {
 
-		//5.读取消息
+		//6.设置读取超时（60秒内必须有网络活动，包括Pong）
+		err = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		if err != nil {
+			logrus.Errorf("[websocket-normal处理器] 设置读取超时失败: userID=[%s] err=[%v]", userID, err)
+			break
+		}
+
+		//7.读取消息
 		messageType, p, err := conn.ReadMessage()
 
-		//6.判断是否为正常关闭或服务端主动关闭
+		//8.判断是否为正常关闭或服务端主动关闭
 		if err != nil {
 			if !(websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) ||
 				websocket.IsUnexpectedCloseError(err) == false) {
@@ -48,14 +62,47 @@ func NormalHandler(c *gin.Context) {
 			break
 		}
 
-		//7.打印消息 模拟消息处理逻辑
+		//9.打印消息 模拟消息处理逻辑
 		fmt.Printf("收到消息: %s\n", p)
 
-		//8.推送消息给客户端，模拟服务端推送消息
+		//10.推送消息给客户端，模拟服务端推送消息
 		err = conn.WriteMessage(messageType, []byte("服务器已收到: "+string(p)))
 		if err != nil {
 			logrus.Errorf("[websocket-normal处理器] 推送消息给客户端失败: %v", err)
 			break
+		}
+	}
+}
+
+// heartbeat 心跳协程，定期发送Ping保持连接活跃
+func heartbeat(ctx context.Context, conn *websocket.Conn, userID string) {
+
+	//1.打印日志
+	logrus.Debugf("[websocket-心跳] 开启心跳协程: userID=[%s]", userID)
+
+	//2.创建定时器，每30秒触发一次
+	ticker := time.NewTicker(30 * time.Second)
+	defer func() {
+		ticker.Stop()
+		logrus.Debugf("[websocket-心跳] 关闭心跳协程: userID=[%s]", userID)
+	}()
+
+	//3.循环发送心跳
+	for {
+		select {
+
+		//4.主协程退出，心跳协程也退出
+		case <-ctx.Done():
+			return
+
+		//5.发送Ping帧（客户端会自动回复Pong）
+		case <-ticker.C:
+			err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(10*time.Second))
+			if err != nil {
+				logrus.Errorf("[websocket-心跳] 发送Ping失败: userID=[%s] err=[%v]", userID, err)
+				return
+			}
+			logrus.Debugf("[websocket-心跳] 发送Ping成功: userID=[%s]", userID)
 		}
 	}
 }
